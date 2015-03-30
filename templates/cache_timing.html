@@ -1,0 +1,71 @@
+<html>
+<body>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<script>
+/*
+http://www.npr.org/programs/invisibilia/375927143/the-secret-history-of-thoughts?showDate=2015-01-09
+https://www.pclob.gov/style/featureimage.png
+http://upload.wikimedia.org/wikipedia/en/b/b1/Alicetitlecard.jpg
+http://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Waitress_cast_Alice_1976.JPG/180px-Waitress_cast_Alice_1976.JPG
+*/
+
+var target_latency;
+
+function getHandlerTarget(starttime, target_file) {
+	return function() {
+		target_latency = Date.now() - starttime;
+		
+		// create element to display target latency
+		// make this a table. everyone will thank you
+		var table = document.getElementById("file_access_times");
+		var row = table.insertRow(1);
+		var cell0 = row.insertCell(0);
+		cell0.innerHTML = target_latency;
+		var cell1 = row.insertCell(1);
+		if (target_latency > 20) {
+			cell1.innerHTML = "false";
+		} else {
+			cell1.innerHTML = "true";
+		}
+		var cell2 = row.insertCell(2);
+		cell2.innerHTML = target_file;
+		var cell3 = row.insertCell(3);
+		var img = document.createElement("IMG");
+		img.height = 20;
+		img.src = target_file;
+		cell3.appendChild(img);
+	};
+}
+
+function check_if_in_cache(target_file) {
+	target_latency = 0;
+	known_hits = [];
+	known_misses = [];
+
+	// start by getting latency of target file
+	var new_img1 = document.createElement("IMG");
+	new_img1.onload = getHandlerTarget(Date.now(), target_file);
+	new_img1.onerror = getHandlerTarget(Date.now(), target_file);
+	new_img1.src = target_file;
+
+}
+</script>
+<h2>Recent history sniffing through cache timing</h2>
+<div>
+<textarea style="width:450" id="checkme">http://media.npr.org/chrome/news/nprlogo_138x46.gif</textarea>
+</div>
+<br>
+<input type="button" value="Check if in cache" onclick=check_if_in_cache(document.getElementById('checkme').value)>
+	<div>
+		<table id="file_access_times">
+		  <tr>
+			<th style="width:20%" align="left">Time (ms)</th>
+			<th style="width:20%" align="left">Cache hit?</th>
+			<th style="width:10%" align="left">File link</th>
+			<th style="width:50%" align="left">Image</th>
+		  </tr>
+		</table>
+	</div>
+</body>
+</html>
+
